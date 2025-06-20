@@ -44,7 +44,10 @@ Astar::~Astar()
     delete path_node_pool_[i];
   }
 }
-
+GridMap::Ptr path_searching::Astar::getGridMap()
+{
+    return grid_map_;
+}
 int Astar::search(Eigen::Vector3d start_pt, Eigen::Vector3d end_pt, std::vector<Eigen::Vector3d>& path)
 {
   // if end_pt is out of map, return NO_PATH_FOUND

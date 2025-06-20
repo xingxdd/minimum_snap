@@ -150,8 +150,7 @@ public:
 
   ////////////////////添加////////////////////
   std::vector<Eigen::Vector3d> getOptimalPath();
-
-
+  GridMap::Ptr getGridMap();
   
   ////////////////////////////////////////
 

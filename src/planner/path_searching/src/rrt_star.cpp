@@ -390,6 +390,13 @@ int RRTStar::search(Eigen::Vector3d start, Eigen::Vector3d end, std::vector<Eige
             feasible_cost_ = tmp_cost;
 
             retrievePath(global_goal_node, path);
+            ////新增 6.21
+            // for (size_t i = 0; i < path.size(); ++i)
+            // {
+            //     ROS_WARN("optimal_path.size():%d",path.size());
+            //     std::cout << "Point " << i << ": " << path[i].transpose() << std::endl;
+            // }
+
             optimal_path_.clear();
             optimal_path_ = path;
             visFeasiblePath(path);
