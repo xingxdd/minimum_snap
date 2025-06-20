@@ -113,7 +113,8 @@ void GridMap::initMap(ros::NodeHandle& nh)
   }
 
   // use odometry and point cloud
-  indep_cloud_sub_ = node_.subscribe<sensor_msgs::PointCloud2>("/grid_map/cloud", 10, &GridMap::cloudCallback, this);
+  // indep_cloud_sub_ = node_.subscribe<sensor_msgs::PointCloud2>("/grid_map/cloud", 10, &GridMap::cloudCallback, this);
+  indep_cloud_sub_ = node_.subscribe<sensor_msgs::PointCloud2>("/random_forest/global_cloud", 10, &GridMap::cloudCallback, this);
   indep_odom_sub_ = node_.subscribe<nav_msgs::Odometry>("/grid_map/odom", 10, &GridMap::odomCallback, this);
 
   occ_timer_ = node_.createTimer(ros::Duration(0.05), &GridMap::updateOccupancyCallback, this);
