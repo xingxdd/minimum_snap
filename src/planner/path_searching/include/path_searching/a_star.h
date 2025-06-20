@@ -108,6 +108,14 @@ private:
   std::vector<PathNodePtr> path_node_pool_;
   std::vector<Eigen::Vector3d> path_;
 
+  ///////////////////////添加///////////////////////
+  std::vector<Eigen::Vector3d> optimal_path_;
+
+
+
+  //////////////////////////////////////////////
+
+
   /* main search parameters */
   int allocated_node_num_;  // pre-allocated the nodes num
   int use_node_num_;        // number of the nodes expanded
@@ -139,6 +147,14 @@ public:
   void setGridMap(GridMap::Ptr& grid_map);
   int search(Eigen::Vector3d start_pt, Eigen::Vector3d end_pt, std::vector<Eigen::Vector3d>& path);
   void reset();
+
+  ////////////////////添加////////////////////
+  std::vector<Eigen::Vector3d> getOptimalPath();
+
+
+  
+  ////////////////////////////////////////
+
 
   Astar() {};
   ~Astar();

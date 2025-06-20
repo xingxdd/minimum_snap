@@ -212,5 +212,10 @@ void Astar::reset()
     node->node_state = NOT_EXPANDED_;
   }
 }
+std::vector<Eigen::Vector3d> Astar::getOptimalPath()
+{
+  
+  return optimal_path_;
+}
 
 }  // namespace path_searching

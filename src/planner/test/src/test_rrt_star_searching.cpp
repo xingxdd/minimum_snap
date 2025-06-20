@@ -8,14 +8,9 @@ path_searching::RRTStar::Ptr rrt_star_;
 ros::Subscriber goal_sub;
 ros::Subscriber odom_sub;
 
-// ros::Publisher path_pub;
-// ros::Publisher rrt_tree_vertices_pub;
-// ros::Publisher rrt_tree_edges_pub;
 
 nav_msgs::Odometry::ConstPtr odom_;
 std::vector<Eigen::Vector3d> path;
-// std::vector<Eigen::Vector3d> vertices;
-// std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> edges;
 
 void OdomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 {
