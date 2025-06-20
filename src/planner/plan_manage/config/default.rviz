@@ -25,7 +25,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: global_map
+    SyncSource: grid_map_inflate
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -256,7 +256,7 @@ Visualization Manager:
           Marker Topic: /test_astar_searching/path
           Name: astar_path
           Namespaces:
-            {}
+            astar/path: true
           Queue Size: 100
           Value: true
         - Class: rviz/Marker
@@ -391,7 +391,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 25.506792068481445
+      Distance: 24.42068862915039
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
