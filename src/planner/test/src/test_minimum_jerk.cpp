@@ -41,6 +41,12 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   optimal_path = rrt_star_->getOptimalPath();
   if (success == 1)
   {
+    // for (size_t i = 0; i < optimal_path.size(); ++i)
+    // {
+    //     ROS_WARN("optimal_path.size():%d",optimal_path.size());
+    //     std::cout << "Point " << i << ": " << optimal_path[i].transpose() << std::endl;
+    // }
+
     std::cout << "Path found, Start optimization" << std::endl;
     Eigen::VectorXd pos_x;
     Eigen::VectorXd pos_y;

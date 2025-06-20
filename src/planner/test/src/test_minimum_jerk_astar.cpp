@@ -23,13 +23,71 @@ std::vector<double> x_vec;
 std::vector<double> y_vec;
 std::vector<double> z_vec;
 
-/// @brief 新增///////////////////////////////////////
+/// @brief 新增/////////////////// start //////////////////////////////////////////////
 std::vector<Eigen::Vector3d> optimal_path_new;
+// 获取 grid_map_
+GridMap::Ptr grid_map = astar_->getGridMap();
 
 void OdomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 {
   odom_ = odom;
 }
+
+/**
+  @brief 路径点剪枝
+  @param path 
+  @name  prunePath
+  @brief 对路径点进行剪枝，去除共线的点
+*/
+void prunePath(std::vector<Eigen::Vector3d>& path)
+{
+  std::vector<Eigen::Vector3d> pruned_path;
+  pruned_path.push_back(path.front());
+  for (size_t i = 1; i < path.size() - 1; ++i)
+  {
+    Eigen::Vector3d prev = pruned_path.back();
+    Eigen::Vector3d curr = path[i];
+    Eigen::Vector3d next = path[i + 1];
+    // 如果当前点与前后点共线，则跳过
+    if ((next - curr).normalized() != (curr - prev).normalized())
+    {
+      pruned_path.push_back(curr);
+    }
+  }
+  pruned_path.push_back(path.back());
+  path = pruned_path;
+}
+
+
+/**
+  @brief 检查路径点是否与栅格地图发生碰撞
+  @param x_vec 
+  @param y_vec 
+  @param z_vec 
+  @param grid_map 
+  @return bool
+*/
+bool checkCollision(const std::vector<double>& x_vec, 
+  const std::vector<double>& y_vec, 
+  const std::vector<double>& z_vec, 
+  const GridMap::Ptr& grid_map)
+{
+    for (size_t i = 0; i < x_vec.size(); ++i)
+    {
+        Eigen::Vector3d point(x_vec[i], y_vec[i], z_vec[i]);
+        if (grid_map->getInflateOccupancy(point))
+        {
+            std::cout << "Collision detected at point: " << point.transpose() << std::endl;
+            return true; // 碰撞
+        }
+    }
+    return false; // 无碰撞
+}
+/// @brief 新增/////////////////  stop  ////////////////////////////////////////////////
+
+
+
+
 
 void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
@@ -45,9 +103,6 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   std::cout << "End point: " << end_pt.transpose() << std::endl;
 
 
-
-
-
 //   int success = rrt_star_->search(start_pt, end_pt, path);
   int success = astar_->search(start_pt, end_pt, path);
   ROS_WARN("path:",path);
@@ -59,11 +114,20 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   if (success == 1)
   {
     std::cout << "Path found, Start optimization" << std::endl;
-    // for (size_t i = 0; i < path.size(); ++i)
-    // {
-    //     ROS_WARN("Path.size():%d",path.size());
-    //     std::cout << "Point " << i << ": " << path[i].transpose() << std::endl;
-    // }
+    for (size_t i = 0; i < path.size(); ++i)
+    {
+        ROS_WARN("Path.size():%d",path.size());
+        std::cout << "Point " << i << ": " << path[i].transpose() << std::endl;
+    }
+
+    //剪枝操作
+    prunePath(optimal_path);
+
+    for (size_t i = 0; i < optimal_path.size(); ++i)
+    {
+        ROS_WARN("Optimal path.size():%d",optimal_path.size());
+        std::cout << "Optimal Point " << i << ": " << optimal_path[i].transpose() << std::endl;
+    }
     if (optimal_path.empty())
     {
         ROS_WARN("Optimal path is empty, skipping optimization!");
@@ -168,6 +232,9 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
             }
         }
         z_vec.push_back(end_pt[2]);
+
+        
+        
     }
     else
     {
@@ -184,6 +251,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         trajectory_marker.points.push_back(pt);
     }
     trajectory_pub.publish(trajectory_marker);
+
   }
   else
   {
@@ -199,6 +267,8 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   astar_->reset();
   optimizer_->reset();
 }
+
+
 
 int main(int argc, char **argv)
 {
