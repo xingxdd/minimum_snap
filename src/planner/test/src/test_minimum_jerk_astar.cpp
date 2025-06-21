@@ -23,40 +23,121 @@ std::vector<double> x_vec;
 std::vector<double> y_vec;
 std::vector<double> z_vec;
 
-/// @brief 新增/////////////////// start //////////////////////////////////////////////
+/// @brief 新增///////////////////start////////////////////
 std::vector<Eigen::Vector3d> optimal_path_new;
-// 获取 grid_map_
-GridMap::Ptr grid_map = astar_->getGridMap();
 
 void OdomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 {
   odom_ = odom;
 }
 
+// /**
+//   @brief 路径点剪枝
+//   @param path 
+//   @name  prunePath
+//   @brief 对路径点进行剪枝，去除共线的点
+// */
+// void prunePath(std::vector<Eigen::Vector3d>& path)
+// {
+//   std::vector<Eigen::Vector3d> pruned_path;
+//   pruned_path.push_back(path.front());
+//   for (size_t i = 1; i < path.size() - 1; ++i)
+//   {
+//     Eigen::Vector3d prev = pruned_path.back();
+//     Eigen::Vector3d curr = path[i];
+//     Eigen::Vector3d next = path[i + 1];
+//     // 如果当前点与前后点共线，则跳过
+//     if ((next - curr).normalized() != (curr - prev).normalized())
+//     {
+//       pruned_path.push_back(curr);
+//     }
+//   }
+//   pruned_path.push_back(path.back());
+//   path = pruned_path;
+// }
+
+
 /**
-  @brief 路径点剪枝
-  @param path 
-  @name  prunePath
-  @brief 对路径点进行剪枝，去除共线的点
-*/
-void prunePath(std::vector<Eigen::Vector3d>& path)
+ * @brief 计算点到直线的距离
+ * @param start 直线起点
+ * @param end 直线终点
+ * @param point 待计算的点
+ * @return 点到直线的距离
+ */
+double disP2L(const Eigen::Vector3d& start, const Eigen::Vector3d& end, const Eigen::Vector3d& point)
 {
-  std::vector<Eigen::Vector3d> pruned_path;
-  pruned_path.push_back(path.front());
-  for (size_t i = 1; i < path.size() - 1; ++i)
-  {
-    Eigen::Vector3d prev = pruned_path.back();
-    Eigen::Vector3d curr = path[i];
-    Eigen::Vector3d next = path[i + 1];
-    // 如果当前点与前后点共线，则跳过
-    if ((next - curr).normalized() != (curr - prev).normalized())
-    {
-      pruned_path.push_back(curr);
-    }
-  }
-  pruned_path.push_back(path.back());
-  path = pruned_path;
+    Eigen::Vector3d line_vec = end - start;
+    Eigen::Vector3d point_vec = point - start;
+    double area = line_vec.cross(point_vec).norm();
+    double base = line_vec.norm();
+    return area / base;
 }
+/**
+ * @brief 使用 RDP 算法简化路径
+ * @param path 原始路径
+ * @param path_resolution 简化路径的距离阈值
+ * @return 简化后的路径
+ */
+std::vector<Eigen::Vector3d> pathSimplify(const std::vector<Eigen::Vector3d>& path, double path_resolution)
+{
+    std::vector<Eigen::Vector3d> subPath;
+
+    if (path.size() <= 2)
+    {
+        subPath = path;
+    }
+    else
+    {
+        const Eigen::Vector3d& first = path[0];
+        const Eigen::Vector3d& last = path[path.size() - 1];
+
+        int index_dis = 0;
+        double max_dis = 0;
+
+        // 找到距离直线最远的点
+        for (int i = 1; i < (int)path.size() - 1; i++)
+        {
+            double tmp_dis = disP2L(first, last, path[i]);
+            if (tmp_dis > max_dis)
+            {
+                max_dis = tmp_dis;
+                index_dis = i;
+            }
+        }
+        // 如果最大距离小于阈值，则用直线近似路径
+        if (max_dis < path_resolution)
+        {
+            subPath.push_back(first);
+            subPath.push_back(last);
+        }
+        else
+        {
+            // 递归分割路径
+            std::vector<Eigen::Vector3d> recSubPath1 = pathSimplify(std::vector<Eigen::Vector3d>(path.begin(), path.begin() + index_dis + 1), path_resolution);
+            std::vector<Eigen::Vector3d> recSubPath2 = pathSimplify(std::vector<Eigen::Vector3d>(path.begin() + index_dis, path.end()), path_resolution);
+
+            subPath.insert(subPath.end(), recSubPath1.begin(), recSubPath1.end() - 1);
+            subPath.insert(subPath.end(), recSubPath2.begin(), recSubPath2.end());
+        }
+    }
+
+    return subPath;
+}
+
+void prunePath(std::vector<Eigen::Vector3d>& path, double path_resolution)
+{
+    if (path.size() <= 2)
+    {
+        return; // 如果路径点少于等于2个，直接返回
+    }
+
+    // 调用 RDP 算法简化路径
+    path = pathSimplify(path, path_resolution);
+}
+
+
+
+
 
 
 /**
@@ -72,23 +153,20 @@ bool checkCollision(const std::vector<double>& x_vec,
   const std::vector<double>& z_vec, 
   const GridMap::Ptr& grid_map)
 {
-    for (size_t i = 0; i < x_vec.size(); ++i)
-    {
-        Eigen::Vector3d point(x_vec[i], y_vec[i], z_vec[i]);
-        if (grid_map->getInflateOccupancy(point))
-        {
-            std::cout << "Collision detected at point: " << point.transpose() << std::endl;
-            return true; // 碰撞
-        }
-    }
-    return false; // 无碰撞
+// for (size_t i = 0; i < x_vec.size(); ++i)
+// {
+// Eigen::Vector3d point(x_vec[i], y_vec[i], z_vec[i]);
+// if (grid_map->getInflateOccupancy(point))
+// {
+// std::cout << "Collision detected at point: " << point.transpose() << std::endl;
+// return true; // 碰撞
+// }
+// }
+// return false; // 无碰撞
 }
-/// @brief 新增/////////////////  stop  ////////////////////////////////////////////////
 
 
-
-
-
+/// @brief 新增/////////////////stop//////////////////////
 void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
   // start and end condition
@@ -105,6 +183,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 
 //   int success = rrt_star_->search(start_pt, end_pt, path);
   int success = astar_->search(start_pt, end_pt, path);
+  
   ROS_WARN("path:",path);
 //   optimal_path = rrt_star_->getOptimalPath();
   optimal_path.clear();
@@ -120,8 +199,9 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         std::cout << "Point " << i << ": " << path[i].transpose() << std::endl;
     }
 
+    double path_resolution = 0.3; // 设置距离阈值（单位：米）
     //剪枝操作
-    prunePath(optimal_path);
+    prunePath(optimal_path, path_resolution);
 
     for (size_t i = 0; i < optimal_path.size(); ++i)
     {
@@ -232,9 +312,6 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
             }
         }
         z_vec.push_back(end_pt[2]);
-
-        
-        
     }
     else
     {
@@ -251,7 +328,6 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         trajectory_marker.points.push_back(pt);
     }
     trajectory_pub.publish(trajectory_marker);
-
   }
   else
   {
