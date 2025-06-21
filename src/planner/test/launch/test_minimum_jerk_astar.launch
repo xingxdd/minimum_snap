@@ -9,7 +9,7 @@
     <param name="grid_map/local_update_range_x"  value="40.0" /> 
     <param name="grid_map/local_update_range_y"  value="20.0" /> 
     <param name="grid_map/local_update_range_z"  value="3.0" /> 
-    <param name="grid_map/obstacles_inflation"     value="0.099" /> 
+    <param name="grid_map/obstacles_inflation"     value="0.199" /> 
     <param name="grid_map/local_map_margin" value="30"/>
     <param name="grid_map/ground_height"        value="0.0"/>
     <!-- camera parameter -->
@@ -48,7 +48,7 @@
     <param name="rrt_star/max_tolerance_time" value="0.1"/> -->
     
     <!-- astar parameters -->
-    <param name="astar/resolution" value="0.1" />
+    <param name="astar/resolution" value="0.2" />
     <param name="astar/lambda_heu" value="1.0" />
     <param name="astar/allocated_node_num" value="1000000" />
     
