@@ -12,8 +12,8 @@ traj_optimization::MinimumControl::Ptr optimizer_;
 ros::Subscriber goal_sub;
 ros::Subscriber odom_sub;
 
-ros::Publisher  trajectory_pub;
-visualization_msgs::Marker trajectory_marker;
+ros::Publisher  trajectory_pub,trajectory_pub_optimized,optimal_path_points_pub;
+visualization_msgs::Marker trajectory_marker,trajectory_marker_optimized, optimal_path_points;
 
 nav_msgs::Odometry::ConstPtr odom_;
 std::vector<Eigen::Vector3d> path;
@@ -165,6 +165,23 @@ bool checkCollision(const std::vector<double>& x_vec,
 // return false; // 无碰撞
 }
 
+bool checkTrajectoryCollision(const std::vector<double>& x_vec,
+  const std::vector<double>& y_vec,
+  const std::vector<double>& z_vec,
+  const GridMap::Ptr& grid_map)
+{
+for (size_t i = 0; i < x_vec.size(); ++i)
+{
+Eigen::Vector3d pt(x_vec[i], y_vec[i], z_vec[i]);
+if (grid_map->getInflateOccupancy(pt))
+{
+std::cout << "Collision detected at: " << pt.transpose() << std::endl;
+return true;
+}
+}
+return false;
+}
+
 
 /// @brief 新增/////////////////stop//////////////////////
 void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
@@ -189,7 +206,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   optimal_path.clear();
   optimal_path = path;
   // optimal_path = astar_->getOptimalPath();
-
+  
   if (success == 1)
   {
     std::cout << "Path found, Start optimization" << std::endl;
@@ -203,11 +220,20 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     //剪枝操作
     prunePath(optimal_path, path_resolution);
 
+    optimal_path_points.points.clear();
     for (size_t i = 0; i < optimal_path.size(); ++i)
     {
         ROS_WARN("Optimal path.size():%d",optimal_path.size());
         std::cout << "Optimal Point " << i << ": " << optimal_path[i].transpose() << std::endl;
+        geometry_msgs::Point pt;
+        pt.x = optimal_path[i][0];
+        pt.y = optimal_path[i][1];
+        pt.z = optimal_path[i][2];
+        optimal_path_points.points.push_back(pt);
+
+        optimal_path_points_pub.publish(optimal_path_points);
     }
+
     if (optimal_path.empty())
     {
         ROS_WARN("Optimal path is empty, skipping optimization!");
@@ -333,9 +359,208 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
   {
     std::cout << "Path not found!" << std::endl;
   }
+////////////////////////////////////////////////////////////////////////////////////
+// 可视化轨迹后，检测碰撞并自动重规划
+GridMap::Ptr grid_map = astar_->getGridMap(); // 获取地图指针
+int replan_count = 0;
+const int max_replan = 5;
+while (checkTrajectoryCollision(x_vec, y_vec, z_vec, grid_map) && replan_count < max_replan)
+{
+    ROS_ERROR("checkTrajectoryCollision: Collision detected, replanning...");
+    
+    std::cout << "Trajectory collision detected, replanning..." << std::endl;
+    // 找到发生碰撞的段，插入中点
+    // int collision_idx = -1;
+    // for (size_t i = 0; i < x_vec.size(); ++i)
+    // {
+    //     Eigen::Vector3d pt(x_vec[i], y_vec[i], z_vec[i]);
+    //     if (grid_map->getInflateOccupancy(pt))
+    //     {
+    //         collision_idx = i;
+    //         break;
+    //     }
+    // }
+    // if (collision_idx < 0 || collision_idx >= optimal_path.size() - 1)
+    // {
+    //     std::cout << "No valid collision segment found, abort replanning." << std::endl;
+    //     break;
+    // }
+    // // 在路径中插入中点
+    // Eigen::Vector3d mid = (optimal_path[collision_idx] + optimal_path[collision_idx + 1]) / 2.0;
+    // optimal_path.insert(optimal_path.begin() + collision_idx + 1, mid);
+
+    // 找到发生碰撞的采样点
+    int collision_idx = -1;
+    for (size_t i = 0; i < x_vec.size(); ++i)
+    {
+        Eigen::Vector3d pt(x_vec[i], y_vec[i], z_vec[i]);
+        if (grid_map->getInflateOccupancy(pt))
+        {
+            collision_idx = i;
+            break;
+        }
+    }
+    if (collision_idx < 0)
+    {
+        std::cout << "No valid collision point found, abort replanning." << std::endl;
+        break;
+    }
+
+    // 找到最近的路径段并插入中点
+    int nearest_seg = -1;
+    double min_dist = 1e9;
+    Eigen::Vector3d collision_pt(x_vec[collision_idx], y_vec[collision_idx], z_vec[collision_idx]);
+    for (size_t i = 0; i < optimal_path.size() - 1; ++i)
+    {
+        Eigen::Vector3d seg_mid = (optimal_path[i] + optimal_path[i+1]) / 2.0;
+        double dist = (collision_pt - seg_mid).norm();
+        if (dist < min_dist)
+        {
+            min_dist = dist;
+            nearest_seg = i;
+        }
+    }
+    if (nearest_seg >= 0 && nearest_seg < optimal_path.size() - 1)
+    {
+        Eigen::Vector3d mid = (optimal_path[nearest_seg] + optimal_path[nearest_seg + 1]) / 2.0;
+        optimal_path.insert(optimal_path.begin() + nearest_seg + 1, mid);
+    }
+    else
+    {
+        std::cout << "No valid segment for collision point, abort replanning." << std::endl;
+        break;
+    }
+
+
+    // 重新分配时间
+    Eigen::VectorXd time_vec;
+    time_vec.resize(optimal_path.size() - 1);
+    for (int i = 0; i < optimal_path.size() - 1; i++)
+        time_vec(i) = 1.0;
+
+    // 重新生成轨迹点
+    Eigen::VectorXd pos_x(optimal_path.size()), pos_y(optimal_path.size()), pos_z(optimal_path.size());
+    for (int i = 0; i < optimal_path.size(); i++)
+    {
+        pos_x(i) = optimal_path[i][0];
+        pos_y(i) = optimal_path[i][1];
+        pos_z(i) = optimal_path[i][2];
+    }
+
+    // 重新优化
+    Eigen::Vector2d bound_vel_x(0, 0), bound_acc_x(0, 0);
+    optimizer_->solve(pos_x, bound_vel_x, bound_acc_x, time_vec);
+    // optimizer_->solve(pos_x, Eigen::Vector2d(0,0), Eigen::Vector2d(0,0), time_vec);
+    std::vector<double> new_x_vec;
+    coef_1d = optimizer_->getCoef1d();
+    for (int i = 0; i < optimal_path.size() - 1; i++)
+    {
+        for (double t = 0; t < time_vec(i); t += 0.1)
+        {
+            Eigen::Matrix<double, 1, 6> coef_matrix;
+            coef_matrix << coef_1d(6 * i), coef_1d(6 * i + 1), coef_1d(6 * i + 2), coef_1d(6 * i + 3), coef_1d(6 * i + 4), coef_1d(6 * i + 5);
+            Eigen::Matrix<double, 6, 1> t_vector;
+            for (int j = 0; j < 6; j++)
+                t_vector(j) = pow(t, j);
+            new_x_vec.push_back((coef_matrix * t_vector)(0, 0));
+        }
+    }
+    new_x_vec.push_back(optimal_path.back()[0]);
+    x_vec = new_x_vec;
+
+    // y, z 同理，略（可参考你已有的轨迹采样代码）
+    // 重新优化 y
+    Eigen::Vector2d bound_vel_y(0, 0), bound_acc_y(0, 0);
+    optimizer_->solve(pos_y, bound_vel_y, bound_acc_y, time_vec);
+    // optimizer_->solve(pos_y, Eigen::Vector2d(0,0), Eigen::Vector2d(0,0), time_vec);
+    std::vector<double> new_y_vec;
+    coef_1d = optimizer_->getCoef1d();
+    for (int i = 0; i < optimal_path.size() - 1; i++)
+    {
+        for (double t = 0; t < time_vec(i); t += 0.1)
+        {
+            Eigen::Matrix<double, 1, 6> coef_matrix;
+            coef_matrix << coef_1d(6 * i), coef_1d(6 * i + 1), coef_1d(6 * i + 2), coef_1d(6 * i + 3), coef_1d(6 * i + 4), coef_1d(6 * i + 5);
+            Eigen::Matrix<double, 6, 1> t_vector;
+            for (int j = 0; j < 6; j++)
+                t_vector(j) = pow(t, j);
+            new_y_vec.push_back((coef_matrix * t_vector)(0, 0));
+        }
+    }
+    new_y_vec.push_back(optimal_path.back()[1]);
+    y_vec = new_y_vec;
+
+    // 重新优化 z
+    Eigen::Vector2d bound_vel_z(0, 0), bound_acc_z(0, 0);
+    optimizer_->solve(pos_z, bound_vel_z, bound_acc_z, time_vec);
+    // optimizer_->solve(pos_z, Eigen::Vector2d(0,0), Eigen::Vector2d(0,0), time_vec);
+    std::vector<double> new_z_vec;
+    coef_1d = optimizer_->getCoef1d();
+    for (int i = 0; i < optimal_path.size() - 1; i++)
+    {
+        for (double t = 0; t < time_vec(i); t += 0.1)
+        {
+            Eigen::Matrix<double, 1, 6> coef_matrix;
+            coef_matrix << coef_1d(6 * i), coef_1d(6 * i + 1), coef_1d(6 * i + 2), coef_1d(6 * i + 3), coef_1d(6 * i + 4), coef_1d(6 * i + 5);
+            Eigen::Matrix<double, 6, 1> t_vector;
+            for (int j = 0; j < 6; j++)
+                t_vector(j) = pow(t, j);
+            new_z_vec.push_back((coef_matrix * t_vector)(0, 0));
+        }
+    }
+    new_z_vec.push_back(optimal_path.back()[2]);
+    z_vec = new_z_vec;
+
+
+        replan_count++;
+      ROS_ERROR("Replan count: %d", replan_count);
+}
+if (replan_count >= max_replan)
+{
+    ROS_ERROR("Replan count: %d", replan_count);
+    // 如果重规划次数超过最大限制，输出错误信息
+    std::cout << "Replan failed after " << max_replan << " attempts!" << std::endl;
+}
+    // visualize th trajectory
+  
+    for (int i = 0; i < x_vec.size(); i++)
+    {
+        geometry_msgs::Point pt;
+        pt.x = x_vec[i];
+        pt.y = y_vec[i];
+        pt.z = z_vec[i];
+        trajectory_marker_optimized.points.push_back(pt);
+    }
+    trajectory_pub_optimized.publish(trajectory_marker_optimized);
+
+    if(trajectory_marker_optimized==trajectory_marker)
+    {
+        ROS_WARN("The init Trajectory optimized successfully!");
+    }
+    else
+    {
+        ROS_WARN("Trajectory optimization is not perfect!");
+    }
+   
+    
+
+
+
+////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
   path.clear();
   optimal_path.clear();
   trajectory_marker.points.clear();
+  trajectory_marker_optimized.points.clear();
   x_vec.clear();
   y_vec.clear();
   z_vec.clear();
@@ -369,6 +594,42 @@ int main(int argc, char **argv)
   trajectory_marker.color.r = 1.0;
   trajectory_marker.color.g = 0.0;
   trajectory_marker.color.b = 1.0;
+
+
+
+  trajectory_pub_optimized = nh.advertise<visualization_msgs::Marker>("/trajectory_optimized", 10);
+
+  trajectory_marker_optimized.header.frame_id = "world";
+  trajectory_marker_optimized.header.stamp = ros::Time::now();
+  trajectory_marker_optimized.ns = "trajectory_optimized";
+  trajectory_marker_optimized.type = visualization_msgs::Marker::LINE_STRIP;
+  trajectory_marker_optimized.action = visualization_msgs::Marker::ADD;
+  trajectory_marker_optimized.pose.orientation.w = 1.0;
+  trajectory_marker_optimized.scale.x = 0.1;
+  trajectory_marker_optimized.scale.y = 0.1;
+  trajectory_marker_optimized.scale.z = 0.1;
+  trajectory_marker_optimized.color.a = 1.0;
+  trajectory_marker_optimized.color.r = 0.0;
+  trajectory_marker_optimized.color.g = 1.0;
+  trajectory_marker_optimized.color.b = 0.0;
+
+  optimal_path_points_pub = nh.advertise<visualization_msgs::Marker>("/optimal_path_points", 1);
+  optimal_path_points.header.frame_id = "world";
+  optimal_path_points.header.stamp = ros::Time::now();
+  optimal_path_points.ns = "optimal_path_points";
+  optimal_path_points.type = visualization_msgs::Marker::POINTS;
+  optimal_path_points.action = visualization_msgs::Marker::ADD;
+  optimal_path_points.pose.orientation.w = 1.0;
+  optimal_path_points.scale.x = 0.2; // 点的大小
+  optimal_path_points.scale.y = 0.2;
+  optimal_path_points.color.a = 1.0;
+  optimal_path_points.color.r = 1.0;
+  optimal_path_points.color.g = 0.5;
+  optimal_path_points.color.b = 0.0;
+  
+
+
+
 
   GridMap::Ptr grid_map = std::make_shared<GridMap>();
   grid_map->initMap(nh);
