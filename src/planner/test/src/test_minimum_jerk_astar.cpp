@@ -3,7 +3,8 @@
 #include <plan_env/grid_map.h>
 
 #include <path_searching/a_star.h>
-
+// 1. 在文件顶部添加消息头文件
+#include <quadrotor_msgs/PolynomialTrajectory.h>
 
 // path_searching::RRTStar::Ptr rrt_star_;
 path_searching::Astar::Ptr astar_;
@@ -25,7 +26,44 @@ std::vector<double> z_vec;
 
 /// @brief 新增///////////////////start////////////////////
 std::vector<Eigen::Vector3d> optimal_path_new;
+// 2. 在全局变量区添加发布器
+ros::Publisher poly_traj_pub;
+/**
+ * @brief 打印网格地图信息
+ * @param grid_map 智能指针指向的网格地图对象
+ * @details 打印网格地图的原点、分辨率、地图大小等信息，并检查地图中是否有障碍物
+ * @note 该函数遍历地图的部分区域，统计并打印障碍物点的位置
+ * @note 仅打印前10个障碍物点，统计总数
+ * @note 该函数假设网格地图的分辨率是均匀的，并且障碍物点的检测是基于占用栅格的
+ * @note 该函数可以用于调试和验证网格地图的正确性
+ */
+// void printGridMapInfo(const GridMap::Ptr& grid_map)
+// {
+//     ROS_WARN("GridMap Info:")
+//     ROS_WARN(grid_map->getOrigin().transpose());
+//     std::cout << "  Resolution: " << grid_map->getResolution() << std::endl;
+//     std::cout << "  Map Size: " << grid_map->getMapSize().transpose() << std::endl;
 
+//     // 检查地图中是否有障碍物（遍历部分区域示例）
+//     int obs_count = 0;
+//     for (double x = grid_map->getOrigin()[0]; x < grid_map->getOrigin()[0] + grid_map->getMapSize()[0]; x += grid_map->getResolution())
+//     {
+//         for (double y = grid_map->getOrigin()[1]; y < grid_map->getOrigin()[1] + grid_map->getMapSize()[1]; y += grid_map->getResolution())
+//         {
+//             for (double z = grid_map->getOrigin()[2]; z < grid_map->getOrigin()[2] + grid_map->getMapSize()[2]; z += grid_map->getResolution())
+//             {
+//                 Eigen::Vector3d pt(x, y, z);
+//                 if (grid_map->getInflateOccupancy(pt))
+//                 {
+//                     obs_count++;
+//                     if (obs_count < 10) // 只打印前10个障碍物点
+//                         std::cout << "  Obstacle at: " << pt.transpose() << std::endl;
+//                 }
+//             }
+//         }
+//     }
+//     std::cout << "Total obstacle voxels detected: " << obs_count << std::endl;
+// }
 void OdomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 {
   odom_ = odom;
@@ -170,16 +208,16 @@ bool checkTrajectoryCollision(const std::vector<double>& x_vec,
   const std::vector<double>& z_vec,
   const GridMap::Ptr& grid_map)
 {
-for (size_t i = 0; i < x_vec.size(); ++i)
-{
-Eigen::Vector3d pt(x_vec[i], y_vec[i], z_vec[i]);
-if (grid_map->getInflateOccupancy(pt))
-{
-std::cout << "Collision detected at: " << pt.transpose() << std::endl;
-return true;
-}
-}
-return false;
+    for (size_t i = 0; i < x_vec.size(); ++i)
+    {
+            Eigen::Vector3d pt(x_vec[i], y_vec[i], z_vec[i]);
+        if (grid_map->getInflateOccupancy(pt))
+        {
+            std::cout << "Collision detected at: " << pt.transpose() << std::endl;
+            return true;
+        }
+    }
+    return false;
 }
 
 
@@ -344,6 +382,41 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         std::cout << "optimize faiure!" << std::endl;
     }
 
+
+// 仅在轨迹优化成功后发布
+if (success_x && success_y && success_z)
+{
+    quadrotor_msgs::PolynomialTrajectory traj_msg;
+    traj_msg.header.stamp = ros::Time::now();
+    traj_msg.trajectory_id = 0;
+    traj_msg.num_order = 5; // 6阶多项式，order=5
+    traj_msg.num_segment = optimal_path.size() - 1;
+
+    // 展开系数到一维
+    for (int i = 0; i < traj_msg.num_segment; ++i)
+    {
+        // x
+        for (int j = 0; j < 6; ++j)
+            traj_msg.coef_x.push_back(optimizer_->getCoef1d()(6 * i + j));
+        // y
+        for (int j = 0; j < 6; ++j)
+            traj_msg.coef_y.push_back(optimizer_->getCoef1d()(6 * i + j));
+        // z
+        for (int j = 0; j < 6; ++j)
+            traj_msg.coef_z.push_back(optimizer_->getCoef1d()(6 * i + j));
+        // 时间
+        traj_msg.time.push_back(time_vec(i));
+    }
+
+    poly_traj_pub.publish(traj_msg);
+}
+
+
+
+
+
+
+
     // visualize th trajectory
     for (int i = 0; i < x_vec.size(); i++)
     {
@@ -360,8 +433,11 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     std::cout << "Path not found!" << std::endl;
   }
 ////////////////////////////////////////////////////////////////////////////////////
-// 可视化轨迹后，检测碰撞并自动重规划
-GridMap::Ptr grid_map = astar_->getGridMap(); // 获取地图指针
+    // 可视化轨迹后，检测碰撞并自动重规划
+    GridMap::Ptr grid_map = astar_->getGridMap(); // 获取地图指针
+    // printGridMapInfo(grid_map); // 打印地图信息
+
+
 int replan_count = 0;
 const int max_replan = 5;
 while (checkTrajectoryCollision(x_vec, y_vec, z_vec, grid_map) && replan_count < max_replan)
@@ -514,6 +590,10 @@ while (checkTrajectoryCollision(x_vec, y_vec, z_vec, grid_map) && replan_count <
 
         replan_count++;
       ROS_ERROR("Replan count: %d", replan_count);
+
+
+
+
 }
 if (replan_count >= max_replan)
 {
@@ -542,20 +622,9 @@ if (replan_count >= max_replan)
         ROS_WARN("Trajectory optimization is not perfect!");
     }
    
-    
-
 
 
 ////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-
-
-
 
   path.clear();
   optimal_path.clear();
@@ -578,7 +647,8 @@ int main(int argc, char **argv)
 
   goal_sub = nh.subscribe<geometry_msgs::PoseStamped>("/goal", 10, &GoalCallback);
   odom_sub = nh.subscribe<nav_msgs::Odometry>("/visual_slam/odom", 10, &OdomCallback);
-
+  // 3. 在 main 函数中初始化发布器
+  poly_traj_pub = nh.advertise<quadrotor_msgs::PolynomialTrajectory>("/poly_traj_server/traj", 1);
   trajectory_pub = nh.advertise<visualization_msgs::Marker>("/trajectory", 10);
 
   trajectory_marker.header.frame_id = "world";
