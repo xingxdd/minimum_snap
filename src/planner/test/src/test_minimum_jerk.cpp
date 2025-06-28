@@ -1,7 +1,7 @@
 #include <path_searching/rrt_star.h>
 #include <traj_optimization/minimum_control.h>
 #include <plan_env/grid_map.h>
-
+#include <quadrotor_msgs/PolynomialTrajectory.h>
 path_searching::RRTStar::Ptr rrt_star_;
 traj_optimization::MinimumControl::Ptr optimizer_;
 
@@ -18,7 +18,7 @@ Eigen::VectorXd coef_1d;
 std::vector<double> x_vec;
 std::vector<double> y_vec;
 std::vector<double> z_vec;
-
+ros::Publisher poly_traj_pub;
 
 void OdomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 {
@@ -75,12 +75,13 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     {
         time_vec(i) = 1.0;
     }
-
+    Eigen::VectorXd coef_1d_x, coef_1d_y, coef_1d_z;
     // start optimization, x, y, z separately, serial optimization
     // need to change to parallel optimization
     bool success_x = optimizer_->solve(pos_x, bound_vel_x, bound_acc_x, time_vec);
     if (success_x)
     {
+        coef_1d_x = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -106,6 +107,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     bool success_y = optimizer_->solve(pos_y, bound_vel_y, bound_acc_y, time_vec);
     if (success_y)
     {
+        coef_1d_y = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -131,6 +133,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     bool success_z = optimizer_->solve(pos_z, bound_vel_z, bound_acc_z, time_vec);
     if (success_z)
     {
+        coef_1d_z = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -153,6 +156,28 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         std::cout << "optimize faiure!" << std::endl;
     }
 
+    
+    // 发布轨迹时
+    if (success_x && success_y && success_z)
+    {
+        quadrotor_msgs::PolynomialTrajectory traj_msg;
+        traj_msg.header.stamp = ros::Time::now();
+        traj_msg.trajectory_id = 1;
+        traj_msg.num_order = 5;
+        traj_msg.num_segment = optimal_path.size() - 1;
+
+        for (int i = 0; i < traj_msg.num_segment; ++i)
+        {
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_x.push_back(coef_1d_x(6 * i + j));
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_y.push_back(coef_1d_y(6 * i + j));
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_z.push_back(coef_1d_z(6 * i + j));
+            traj_msg.time.push_back(time_vec(i));
+        }
+        poly_traj_pub.publish(traj_msg);
+    }
     // visualize th trajectory
     for (int i = 0; i < x_vec.size(); i++)
     {
@@ -187,7 +212,8 @@ int main(int argc, char **argv)
   odom_sub = nh.subscribe<nav_msgs::Odometry>("/visual_slam/odom", 10, &OdomCallback);
 
   trajectory_pub = nh.advertise<visualization_msgs::Marker>("/trajectory", 10);
-
+  // 3. 在 main 函数中初始化发布器
+  poly_traj_pub = nh.advertise<quadrotor_msgs::PolynomialTrajectory>("/poly_traj_server/traj", 1);
   trajectory_marker.header.frame_id = "world";
   trajectory_marker.header.stamp = ros::Time::now();
   trajectory_marker.ns = "trajectory";

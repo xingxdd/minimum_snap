@@ -302,14 +302,17 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     time_vec.resize(optimal_path.size() - 1);
     for (int i = 0; i < optimal_path.size() - 1; i++)
     {
-        time_vec(i) = 1.0;
+        time_vec(i) = 3.0;
     }
 
     // start optimization, x, y, z separately, serial optimization
     // need to change to parallel optimization
+    Eigen::VectorXd coef_1d_x, coef_1d_y, coef_1d_z;
     bool success_x = optimizer_->solve(pos_x, bound_vel_x, bound_acc_x, time_vec);
     if (success_x)
     {
+
+        coef_1d_x = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -335,6 +338,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     bool success_y = optimizer_->solve(pos_y, bound_vel_y, bound_acc_y, time_vec);
     if (success_y)
     {
+        coef_1d_y = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -360,6 +364,7 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     bool success_z = optimizer_->solve(pos_z, bound_vel_z, bound_acc_z, time_vec);
     if (success_z)
     {
+        coef_1d_z = optimizer_->getCoef1d();
         coef_1d = optimizer_->getCoef1d();
         for (int i = 0; i < optimal_path.size() - 1; i++)
         {
@@ -383,35 +388,57 @@ void GoalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     }
 
 
-// 仅在轨迹优化成功后发布
-if (success_x && success_y && success_z)
-{
-    quadrotor_msgs::PolynomialTrajectory traj_msg;
-    traj_msg.header.stamp = ros::Time::now();
-    traj_msg.trajectory_id = 0;
-    traj_msg.num_order = 5; // 6阶多项式，order=5
-    traj_msg.num_segment = optimal_path.size() - 1;
+// // 仅在轨迹优化成功后发布
+// if (success_x && success_y && success_z)
+// {
+//     quadrotor_msgs::PolynomialTrajectory traj_msg;
+//     traj_msg.header.stamp = ros::Time::now();
+//     traj_msg.trajectory_id = 0;
+//     traj_msg.num_order = 5; // 6阶多项式，order=5
+//     traj_msg.num_segment = optimal_path.size() - 1;
 
-    // 展开系数到一维
-    for (int i = 0; i < traj_msg.num_segment; ++i)
+//     // 展开系数到一维
+//     for (int i = 0; i < traj_msg.num_segment; ++i)
+//     {
+//         // x
+//         for (int j = 0; j < 6; ++j)
+//             traj_msg.coef_x.push_back(optimizer_->getCoef1d()(6 * i + j));
+//         // y
+//         for (int j = 0; j < 6; ++j)
+//             traj_msg.coef_y.push_back(optimizer_->getCoef1d()(6 * i + j));
+//         // z
+//         for (int j = 0; j < 6; ++j)
+//             traj_msg.coef_z.push_back(optimizer_->getCoef1d()(6 * i + j));
+//         // 时间
+//         traj_msg.time.push_back(time_vec(i));
+//     }
+
+//     poly_traj_pub.publish(traj_msg);
+// }
+
+    // 优化后分别保存
+
+
+    if (success_x && success_y && success_z)
     {
-        // x
-        for (int j = 0; j < 6; ++j)
-            traj_msg.coef_x.push_back(optimizer_->getCoef1d()(6 * i + j));
-        // y
-        for (int j = 0; j < 6; ++j)
-            traj_msg.coef_y.push_back(optimizer_->getCoef1d()(6 * i + j));
-        // z
-        for (int j = 0; j < 6; ++j)
-            traj_msg.coef_z.push_back(optimizer_->getCoef1d()(6 * i + j));
-        // 时间
-        traj_msg.time.push_back(time_vec(i));
+        quadrotor_msgs::PolynomialTrajectory traj_msg;
+        traj_msg.header.stamp = ros::Time::now();
+        traj_msg.trajectory_id = 1;
+        traj_msg.num_order = 5;
+        traj_msg.num_segment = optimal_path.size() - 1;
+
+        for (int i = 0; i < traj_msg.num_segment; ++i)
+        {
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_x.push_back(coef_1d_x(6 * i + j));
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_y.push_back(coef_1d_y(6 * i + j));
+            for (int j = 0; j < 6; ++j)
+                traj_msg.coef_z.push_back(coef_1d_z(6 * i + j));
+            traj_msg.time.push_back(time_vec(i));
+        }
+        poly_traj_pub.publish(traj_msg);
     }
-
-    poly_traj_pub.publish(traj_msg);
-}
-
-
 
 
 
@@ -512,7 +539,7 @@ while (checkTrajectoryCollision(x_vec, y_vec, z_vec, grid_map) && replan_count <
     Eigen::VectorXd time_vec;
     time_vec.resize(optimal_path.size() - 1);
     for (int i = 0; i < optimal_path.size() - 1; i++)
-        time_vec(i) = 1.0;
+        time_vec(i) = 3.0;
 
     // 重新生成轨迹点
     Eigen::VectorXd pos_x(optimal_path.size()), pos_y(optimal_path.size()), pos_z(optimal_path.size());

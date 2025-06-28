@@ -61,6 +61,13 @@
     <remap from="/grid_map/odom" to="/visual_slam/odom"/> -->
 
   </node>
-  
+   
+
+   <node name="poly_traj_server" pkg="traj_server" type="poly_traj_server" output="screen" >
+    <!-- <remap from="~odom" to="/visual_slam/odom" /> -->
+    <remap from="~traj" to="/poly_traj_server/traj" />
+    <remap from="~cmd" to="/planning/pos_cmd" />
+
+   </node>
 
 </launch>

@@ -68,8 +68,17 @@ add_executable(test_rrt_star_searching src/test_rrt_star_searching.cpp)
 add_executable(test_qpsolve src/test_qpsolve.cpp)
 add_executable(test_minimum_jerk src/test_minimum_jerk.cpp)
 add_executable(test_minimum_jerk_astar src/test_minimum_jerk_astar.cpp)
+add_executable(cmd_circle src/cmd_circle.cpp)
+add_executable(traj_pub src/traj_pub.cpp)
 
 ## Specify libraries to link a library or executable target against
+target_link_libraries(traj_pub
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(cmd_circle
+  ${catkin_LIBRARIES}
+)
 
 target_link_libraries(test_astar_node
   ${catkin_LIBRARIES}
