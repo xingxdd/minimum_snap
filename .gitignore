@@ -7,3 +7,8 @@ logs/
 .git
 src/CMakeLists.txt
 .catkin_workspace
+*.bag
+*.log
+*.tmp
+*.bin
+*.dat
