@@ -64,7 +64,10 @@ void trajCallback(const quadrotor_msgs::PolynomialTrajectoryConstPtr &msg)
   trajectory_id_ = msg->trajectory_id;
   num_order_ = msg->num_order;
   num_segment_ = msg->num_segment;
-
+  if(num_segment_>0)
+  {
+    ROS_WARN("tra receive success !!!");
+  }
   for (int i = 0; i < num_segment_; i++)
   {
     vector<double> cx, cy, cz;

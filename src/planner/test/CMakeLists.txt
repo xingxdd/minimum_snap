@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   path_searching
   traj_optimization
   cv_bridge
+  quadrotor_msgs
 )
 
 find_package(Eigen3 REQUIRED)
