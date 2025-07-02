@@ -12,3 +12,4 @@ src/CMakeLists.txt
 *.tmp
 *.bin
 *.dat
+*.bag
