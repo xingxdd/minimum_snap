@@ -71,7 +71,12 @@ add_executable(test_minimum_jerk_astar src/test_minimum_jerk_astar.cpp)
 add_executable(cmd_circle src/cmd_circle.cpp)
 add_executable(traj_pub src/traj_pub.cpp)
 
+add_executable(goal_publisher_node src/goal_publisher_node.cpp)
 ## Specify libraries to link a library or executable target against
+target_link_libraries(goal_publisher_node
+  ${catkin_LIBRARIES}
+)
+
 target_link_libraries(traj_pub
   ${catkin_LIBRARIES}
 )

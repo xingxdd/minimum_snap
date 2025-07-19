@@ -1,4 +1,4 @@
-### 3.1. RRT* + Minimum Snap :
+### 3.1. A* + Minimum Snap :
 
 - Quick start:
  # demo01
@@ -15,5 +15,8 @@
   ```bash
   source devel/setup.bash
   roslaunch plan_manage single_run_in_sim.launch
+
+  source devel/setup.bash
+  rosrun test cmd_circle
   ```
 
